@@ -164,7 +164,7 @@ namespace Catch {
     static stack_t oldSigStack{};
     static struct sigaction oldSigActions[sizeof(signalDefs) / sizeof(SignalDefs)]{};
 
-    void restorePreviousSignalHandlers() {
+    static void restorePreviousSignalHandlers() {
         // We set signal handlers back to the previous ones. Hopefully
         // nobody overwrote them in the meantime, and doesn't expect
         // their signal handlers to live past ours given that they
