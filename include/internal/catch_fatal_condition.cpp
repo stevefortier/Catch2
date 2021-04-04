@@ -159,6 +159,14 @@ namespace Catch {
         { SIGABRT, "SIGABRT - Abort (abnormal termination) signal" }
     };
 
+// Older GCCs trigger -Wmissing-field-initializers for T foo = {}
+// which is zero initialization, but not explicit. We want to avoid
+// that.
+#if defined(__GNUC__)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#endif
+
     static char* altStackMem = nullptr;
     static std::size_t altStackSize = 0;
     static stack_t oldSigStack{};
@@ -221,6 +229,11 @@ namespace Catch {
             sigaction(signalDefs[i].id, &sa, &oldSigActions[i]);
         }
     }
+
+#if defined(__GNUC__)
+#    pragma GCC diagnostic pop
+#endif
+
 
     void FatalConditionHandler::disengage_platform() {
         restorePreviousSignalHandlers();
