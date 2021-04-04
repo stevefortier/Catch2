@@ -26,6 +26,49 @@ function(add_command NAME)
   set(script "${script}${NAME}(${_args})\n" PARENT_SCOPE)
 endfunction()
 
+macro(_add_catch_test_labels LINE)
+  # convert to list of tags
+  string(REPLACE "][" "]\\;[" tags ${line})
+
+  add_command(
+    set_tests_properties "${prefix}${test}${suffix}"
+      PROPERTIES
+        LABELS "${tags}"
+  )
+endmacro()
+
+macro(_add_catch_test LINE)
+  set(test ${line})
+  # Escape characters in test case names that would be parsed by Catch2
+  set(test_name ${test})
+  foreach(char , [ ])
+    string(REPLACE ${char} "\\${char}" test_name ${test_name})
+  endforeach(char)
+  # ...add output dir
+  if(output_dir)
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_name_clean ${test_name})
+    set(output_dir_arg "--out ${output_dir}/${output_prefix}${test_name_clean}${output_suffix}")
+  endif()
+
+  # ...and add to script
+  add_command(add_test
+    "${prefix}${test}${suffix}"
+    ${TEST_EXECUTOR}
+    "${TEST_EXECUTABLE}"
+    "${test_name}"
+    ${extra_args}
+    "${reporter_arg}"
+    "${output_dir_arg}"
+  )
+  add_command(set_tests_properties
+    "${prefix}${test}${suffix}"
+    PROPERTIES
+    WORKING_DIRECTORY "${TEST_WORKING_DIR}"
+    ${properties}
+  )
+  list(APPEND tests "${prefix}${test}${suffix}")
+endmacro()
+
 # Run test executable to get list of available tests
 if(NOT EXISTS "${TEST_EXECUTABLE}")
   message(FATAL_ERROR
@@ -33,11 +76,12 @@ if(NOT EXISTS "${TEST_EXECUTABLE}")
   )
 endif()
 execute_process(
-  COMMAND ${TEST_EXECUTOR} "${TEST_EXECUTABLE}" ${spec} --list-test-names-only
+  COMMAND ${TEST_EXECUTOR} "${TEST_EXECUTABLE}" ${spec} --list-tests *
   OUTPUT_VARIABLE output
   RESULT_VARIABLE result
   WORKING_DIRECTORY "${TEST_WORKING_DIR}"
 )
+
 # Catch --list-test-names-only reports the number of tests, so 0 is... surprising
 if(${result} EQUAL 0)
   message(WARNING
@@ -91,37 +135,22 @@ if(output_dir AND NOT IS_ABSOLUTE ${output_dir})
   endif()
 endif()
 
+set(test)
+set(tags_regex "(\\[([^\\[]*)\\])+$")
+
 # Parse output
 foreach(line ${output})
-  set(test ${line})
-  # Escape characters in test case names that would be parsed by Catch2
-  set(test_name ${test})
-  foreach(char , [ ])
-    string(REPLACE ${char} "\\${char}" test_name ${test_name})
-  endforeach(char)
-  # ...add output dir
-  if(output_dir)
-    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_name_clean ${test_name})
-    set(output_dir_arg "--out ${output_dir}/${output_prefix}${test_name_clean}${output_suffix}")
+  # lines without leading whitespaces are catch output not tests
+  if(${line} MATCHES "^[ \t]+")
+    # strip leading spaces and tabs
+    string(REGEX REPLACE "^[ \t]+" "" line ${line})
+
+    if(${line} MATCHES "${tags_regex}")
+      _add_catch_test_labels(${line})
+    else()
+      _add_catch_test(${line})
+    endif()
   endif()
-  
-  # ...and add to script
-  add_command(add_test
-    "${prefix}${test}${suffix}"
-    ${TEST_EXECUTOR}
-    "${TEST_EXECUTABLE}"
-    "${test_name}"
-    ${extra_args}
-    "${reporter_arg}"
-    "${output_dir_arg}"
-  )
-  add_command(set_tests_properties
-    "${prefix}${test}${suffix}"
-    PROPERTIES
-    WORKING_DIRECTORY "${TEST_WORKING_DIR}"
-    ${properties}
-  )
-  list(APPEND tests "${prefix}${test}${suffix}")
 endforeach()
 
 # Create a list of all discovered tests, which users may use to e.g. set
